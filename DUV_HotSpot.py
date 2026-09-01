@@ -10,20 +10,34 @@ from bpy.props import EnumProperty, BoolProperty, StringProperty, FloatProperty,
 def main(context):
     #Check if an atlas object exists
     if context.scene.subrect_atlas is None:
-        self.report({'WARNING'}, "No valid atlas selected!")
+        print("DreamUV: No valid atlas selected!")
         return {'FINISHED'}
 
+    #FIX: make sure we actually have a valid active MESH object before doing
+    #anything else. Without this check, if the active object is missing or
+    #isn't a mesh (e.g. an empty/atlas reference object got left active),
+    #editmode_toggle()/mode_set() below fail with "poll() failed, context is incorrect".
+    active_obj = bpy.context.view_layer.objects.active
+    if active_obj is None or active_obj.type != 'MESH':
+        print("DreamUV: No valid active mesh object selected, aborting HotSpot.")
+        return {'CANCELLED'}
+
     #make sure active object is actually selected in edit mode:
-    if bpy.context.object.mode == 'EDIT':
-        bpy.context.object.select_set(True)
+    if active_obj.mode == 'EDIT':
+        active_obj.select_set(True)
     
         
     #check for object or edit mode:
     objectmode = False
-    if bpy.context.object.mode == 'OBJECT':
+    if active_obj.mode == 'OBJECT':
         objectmode = True
         #switch to edit and select all
-        bpy.ops.object.editmode_toggle() 
+        #FIX: use mode_set(mode='EDIT') with an explicit context override instead of
+        #editmode_toggle(). mode_set() only requires an active object to pass its
+        #poll check, which we've now guaranteed above, making this far more reliable
+        #than editmode_toggle() when called from a UI button.
+        with bpy.context.temp_override(active_object=active_obj, object=active_obj):
+            bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
 
     #check if uv sync selection is used and turn off if so

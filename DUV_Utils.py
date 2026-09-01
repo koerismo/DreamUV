@@ -459,7 +459,17 @@ def donut_uv_fixer(context):
         if e.select is True:
             edge_list.append(e)
             #print(e)
-            
+
+    #FIX: region_to_loop() can return zero boundary edges when the selected
+    #faces have no boundary at all (e.g. the whole/a closed mesh is selected).
+    #edge_list[0] below would then raise "IndexError: list index out of range".
+    #In that case there's nothing to donut-check, so bail out cleanly.
+    if len(edge_list) == 0:
+        for f in faces:
+            f.select = True
+        bmesh.update_edit_mesh(obj.data)
+        return True
+
     #select faces again
     for f in faces:
         f.select = True      
@@ -469,6 +479,15 @@ def donut_uv_fixer(context):
     for l in edge_list[0].link_loops:
         if l.face.select is True:
             startloop = l
+
+    #FIX: if no linked loop belongs to a selected face, startloop stays None
+    #and startloop.vert below would crash with AttributeError. Bail out cleanly.
+    if startloop is None:
+        for f in faces:
+            f.select = True
+        bmesh.update_edit_mesh(obj.data)
+        return True
+
     #create sorted verts from start loop
     sorted_vert_list = list()
     for f in faces:
@@ -556,7 +575,12 @@ def square_fit(context):
                     bm.select_history.add(l)
                     break
             
-            bpy.ops.mesh.loop_multi_select(ring=False)
+            # Blender 5.1 renamed mesh.loop_multi_select.
+            # Use the new operator when available, fall back for older versions.
+            if hasattr(bpy.ops.mesh, "select_edge_loop_multi"):
+                bpy.ops.mesh.select_edge_loop_multi()
+            else:
+                bpy.ops.mesh.loop_multi_select(ring=False)
             
         
         else:
@@ -657,6 +681,15 @@ def square_fit(context):
     for l in edge_list[0].link_loops:
         if l.face.select is True:
             startloop = l
+
+    #FIX: if no linked loop belongs to a selected face, startloop stays None
+    #and startloop.vert below would crash with AttributeError. Bail out cleanly.
+    if startloop is None:
+        for f in faces:
+            f.select = True
+        bmesh.update_edit_mesh(obj.data)
+        return distorted
+
     #create sorted verts from start loop
     sorted_vert_list = list()
     for f in faces:
