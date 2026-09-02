@@ -2,16 +2,26 @@ version = 1
 revision = 3
 requires-python = ">=3.12"
 
+[manifest]
+members = [
+    "dreamuv",
+    "hotspotter-core",
+]
+
 [[package]]
 name = "dreamuv"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "fake-bpy-module-latest" },
+    { name = "hotspotter-core" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "fake-bpy-module-latest", specifier = ">=20260901" }]
+requires-dist = [
+    { name = "fake-bpy-module-latest", specifier = ">=20260901" },
+    { name = "hotspotter-core", editable = "cpp" },
+]
 
 [[package]]
 name = "fake-bpy-module-latest"
@@ -21,3 +31,8 @@ sdist = { url = "https://files.pythonhosted.org/packages/fb/19/298dedafe6c825085
 wheels = [
     { url = "https://files.pythonhosted.org/packages/91/56/90dc3bde8c10f08b852065a1334abc598c718a0aa5d64731b5e3bdfbfd64/fake_bpy_module_latest-20260901-py3-none-any.whl", hash = "sha256:89ab58d8ccbf0db91b01904efd309d3edd40aa4c13e42b47e82ad5de218da13d", size = 1110755, upload-time = "2026-09-01T10:43:20.291Z" },
 ]
+
+[[package]]
+name = "hotspotter-core"
+version = "0.1.0"
+source = { editable = "cpp" }

@@ -28,3 +28,7 @@ venv.bak/
 
 # Pyre type checker
 .pyre/
+
+.DS_Store
+cpp/build/
+cpp/dist/

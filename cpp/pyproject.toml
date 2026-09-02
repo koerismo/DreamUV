@@ -1,0 +1,19 @@
+[build-system]
+requires = ["scikit-build-core>=1.0.3", "nanobind>=3.0.1"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "hotspotter-core"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.scikit-build]
+minimum-version = "build-system.requires"
+build-dir = "build"
+
+[tool.scikit-build.cmake.define]
+CMAKE_EXPORT_COMPILE_COMMANDS = true
+
+[tool.uv]
+cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.{h,c,hpp,cpp}" }, { file = "CMakeLists.txt" }]

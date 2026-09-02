@@ -1,0 +1,6 @@
+[submodule "cpp/ext/hotspotter"]
+	path = cpp/ext/hotspotter
+	url = https://github.com/koerismo/Hammer-Hotspots.git
+[submodule "cpp/ext/nanobind"]
+	path = cpp/ext/nanobind
+	url = https://github.com/wjakob/nanobind
