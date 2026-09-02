@@ -1,6 +1,7 @@
 from math import inf
 from typing import TYPE_CHECKING
 
+from bmesh.types import BMFace
 import bpy
 import bmesh
 import random
@@ -111,10 +112,10 @@ def main(context: bpy.types.Context):
 
     bm = bmesh.from_edit_mesh(active_object.data)
 
-    faces = list()
+    selected_faces: list[BMFace] = list()
     for face in bm.faces:
         if face.select:
-            faces.append(face)
+            selected_faces.append(face)
 
     bmesh.update_edit_mesh(active_object.data)
     bpy.ops.mesh.select_all(action='DESELECT')
@@ -138,7 +139,7 @@ def main(context: bpy.types.Context):
 
     #select all faces to be hotspotted again:
     
-    for face in faces:
+    for face in selected_faces:
         face.select = True
 
     #PREPROCESS - find islands
@@ -148,27 +149,27 @@ def main(context: bpy.types.Context):
     #list islands
     #iterate using select linked uv
 
-    islands = list()        
-    temp_faces = list()
-    updated_faces = list()
+    islands: list[list[BMFace]] = list()        
+    temp_faces: list[BMFace] = list()
+    updated_faces: list[BMFace] = list()
     #MAKE FACE LIST
-    
+
     for face in bm.faces:
         if face.select:
             updated_faces.append(face)
             temp_faces.append(face)
             face.select = False
-           
+
     while len(temp_faces) > 0:
         updated_faces[0].select = True
         bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, type='FACE')
         bpy.ops.mesh.select_linked(delimit={'UV'})
 
-        islandfaces = list()
+        island_faces: list[BMFace] = list()
         for face in bm.faces:
             if face.select:
-                islandfaces.append(face)
-        islands.append(islandfaces)
+                island_faces.append(face)
+        islands.append(island_faces)
 
         #create updated list
         temp_faces.clear()
@@ -191,21 +192,23 @@ def main(context: bpy.types.Context):
     for island in islands:
         uv_layer = bm.loops.layers.uv.verify()
 
-        for face in faces:
+        for face in selected_faces:
             face.select = False
+        
         for face in island:
             face.select = True
                     
-        HSfaces = list()
+        island_faces: list[BMFace] = list()
+        
         #MAKE FACE LIST
         for face in bm.faces:
             if face.select:
-                HSfaces.append(face)    
+                island_faces.append(face)    
 
         #get original size
-        xmin2, xmax2 = HSfaces[0].loops[0][uv_layer].uv.x, HSfaces[0].loops[0][uv_layer].uv.x
-        ymin2, ymax2 = HSfaces[0].loops[0][uv_layer].uv.y, HSfaces[0].loops[0][uv_layer].uv.y
-        for face in HSfaces: 
+        xmin2, xmax2 = island_faces[0].loops[0][uv_layer].uv.x, island_faces[0].loops[0][uv_layer].uv.x
+        ymin2, ymax2 = island_faces[0].loops[0][uv_layer].uv.y, island_faces[0].loops[0][uv_layer].uv.y
+        for face in island_faces: 
             for vert in face.loops:
                 xmin2 = min(xmin2, vert[uv_layer].uv.x)
                 xmax2 = max(xmax2, vert[uv_layer].uv.x)
@@ -215,7 +218,6 @@ def main(context: bpy.types.Context):
         #try fitting selection to square
         is_rect = DUV_Utils.square_fit(context)
         if is_rect is False:
-            
             #return {'FINISHED'}
         
             bmesh.update_edit_mesh(active_object.data)
@@ -226,10 +228,10 @@ def main(context: bpy.types.Context):
         DUV_Utils.get_orientation(context)
 
         #FIT TO 0-1 range
-        if len(HSfaces):
+        if len(island_faces):
             xmin, ymin = inf, inf
             xmax, ymax = -inf, -inf
-            for face in HSfaces: 
+            for face in island_faces: 
                 for vert in face.loops:
                     xmin = min(xmin, vert[uv_layer].uv.x)
                     xmax = max(xmax, vert[uv_layer].uv.x)
@@ -248,15 +250,15 @@ def main(context: bpy.types.Context):
         edge_x = xmax - xmin
         edge_y = ymax - ymin
 
-        for face in HSfaces:
+        for face in island_faces:
             for loop in face.loops:
                 loop[uv_layer].uv.x -= xmin
                 loop[uv_layer].uv.y -= ymin
                 loop[uv_layer].uv.x /= edge_x
                 loop[uv_layer].uv.y /= edge_y
 
-        aspect = edge_x/edge_y
-        size = sum(f.calc_area() for f in HSfaces if f.select)
+        island_aspect = edge_x / edge_y
+        island_area: float = sum(f.calc_area() for f in island_faces if f.select)
         
         if is_rect is False:
             #calulate ratio empty vs full
@@ -264,13 +266,13 @@ def main(context: bpy.types.Context):
             #prevent divide by 0:
             if size_ratio == 0:
                 size_ratio = 1.0
-            size = size / size_ratio 
+            island_area = island_area / size_ratio
 
-        if aspect > 1:
-            aspect = round(aspect)
+        if island_aspect > 1:
+            island_aspect = round(island_aspect)
         else: 
-            if aspect > 0.0001: #prevent divide by 0
-                aspect = 1/(round(1/aspect))
+            if island_aspect > 0.0001: #prevent divide by 0
+                island_aspect = 1/(round(1/island_aspect))
 
         #ASPECT LOWER THAN 1.0 = TALL
         #ASPECT HIGHER THAN 1.0 = WIDE
@@ -280,14 +282,14 @@ def main(context: bpy.types.Context):
         #2 variations depending on tall or wide
 
         index = 0
-        temp_length = abs(atlas[0].posaspect-aspect)
+        temp_length = abs(atlas[0].pos_aspect - island_aspect)
         temp_index = 0
 
         use_world_orientation = context.scene.duv_useorientation
 
         if use_world_orientation:
             for number in atlas:
-                    test_length = abs(number.aspect-aspect) 
+                    test_length = abs(number.aspect-island_aspect) 
                     if test_length < temp_length:
                         temp_length = test_length
                         temp_index = index
@@ -295,9 +297,9 @@ def main(context: bpy.types.Context):
 
         if not use_world_orientation:
             #wide:
-            if aspect >= 1.0:
+            if island_aspect >= 1.0:
                 for number in atlas:
-                    test_length = abs(number.posaspect-aspect) 
+                    test_length = abs(number.pos_aspect-island_aspect) 
                     if test_length < temp_length:
                         temp_length = test_length
                         temp_index = index
@@ -305,9 +307,9 @@ def main(context: bpy.types.Context):
 
             #tall:
             else:
-                temp_length = abs((atlas[0].posaspect)-(1/aspect))
+                temp_length = abs((atlas[0].pos_aspect)-(1/island_aspect))
                 for number in atlas:
-                    test_length = abs((number.posaspect)-(1/aspect)) 
+                    test_length = abs((number.pos_aspect)-(1/island_aspect)) 
                     if test_length < temp_length:
                         temp_length = test_length
                         temp_index = index
@@ -320,18 +322,18 @@ def main(context: bpy.types.Context):
             if r.aspect == atlas[temp_index].aspect:
                 aspect_bucket.append(r)
             if use_world_orientation is False:
-                if r.aspect == 1/atlas[temp_index].aspect:
+                if r.aspect == 1 / atlas[temp_index].aspect:
                     aspect_bucket.append(r)
 
         #find closest size in bucket:
         index = 0
 
-        temp_length = abs(aspect_bucket[0].size - size)
+        temp_length = abs(aspect_bucket[0].size - island_area)
         temp_index = 0
 
-        validrects = list()
+        valid_rects = list()
         for a in aspect_bucket:
-            test_length = abs(a.size-size) 
+            test_length = abs(a.size-island_area) 
             if test_length <= temp_length:
                 temp_length = test_length
                 temp_index = index
@@ -340,10 +342,10 @@ def main(context: bpy.types.Context):
         index = 0
         for a in aspect_bucket:
             if a.size == aspect_bucket[temp_index].size:
-                validrects.append(index)
+                valid_rects.append(index)
             index += 1
 
-        temp_index = random.choice(validrects)
+        temp_index = random.choice(valid_rects)
 
         #test if coords are already asigned by comparing minmaxes, then try again
 
@@ -353,7 +355,6 @@ def main(context: bpy.types.Context):
         ymin, ymax = aspect_bucket[temp_index].uvcoord[0].y, aspect_bucket[temp_index].uvcoord[0].y
 
         for vert in aspect_bucket[temp_index].uvcoord:
-            
             xmin = min(xmin, vert.x)
             xmax = max(xmax, vert.x)
             ymin = min(ymin, vert.y)
@@ -361,12 +362,12 @@ def main(context: bpy.types.Context):
 
         #flip if aspect is inverted
 
-        if xmin == xmin2 and ymin == ymin2 and xmax == xmax2 and ymax == ymax2 and len(validrects) > 1:
+        if xmin == xmin2 and ymin == ymin2 and xmax == xmax2 and ymax == ymax2 and len(valid_rects) > 1:
             #remove current choice
-            validrects.remove(temp_index)
+            valid_rects.remove(temp_index)
             #print(validrects)
 
-            temp_index = random.choice(validrects)
+            temp_index = random.choice(valid_rects)
 
             xmin, xmax = aspect_bucket[temp_index].uvcoord[0].x, aspect_bucket[temp_index].uvcoord[0].x
             ymin, ymax = aspect_bucket[temp_index].uvcoord[0].y, aspect_bucket[temp_index].uvcoord[0].y
@@ -379,8 +380,8 @@ def main(context: bpy.types.Context):
 
         #flip U and V if aspect is reversed:
         #WIDE case becomes TALL
-        if aspect_bucket[temp_index].aspect < 1.0 and aspect >= 1.0:
-            for face in HSfaces:
+        if aspect_bucket[temp_index].aspect < 1.0 and island_aspect >= 1.0:
+            for face in island_faces:
                 for loop in face.loops:
                     newx = loop[uv_layer].uv.y
                     newy = loop[uv_layer].uv.x
@@ -388,8 +389,8 @@ def main(context: bpy.types.Context):
                     loop[uv_layer].uv.y = newy
         
         #TALL case becomes WIDE
-        if aspect_bucket[temp_index].aspect > 1.0 and aspect < 1.0:
-            for face in HSfaces:
+        if aspect_bucket[temp_index].aspect > 1.0 and island_aspect < 1.0:
+            for face in island_faces:
                 for loop in face.loops:
                     newx = loop[uv_layer].uv.y
                     newy = loop[uv_layer].uv.x
@@ -405,7 +406,7 @@ def main(context: bpy.types.Context):
             ymax -= pixel_inset
 
         #apply the new UV
-        for face in HSfaces:
+        for face in island_faces:
             for loop in face.loops:
                 loop[uv_layer].uv.x *= xmax-xmin
                 loop[uv_layer].uv.y *= ymax-ymin
@@ -420,7 +421,7 @@ def main(context: bpy.types.Context):
 
         if use_world_orientation is False:
             #flip around square aspects randomly
-            if aspect == 1:
+            if island_aspect == 1:
                 flips = random.randint(0, 3)
                 for x in range(flips):
                     bpy.ops.view3d.dreamuv_uvcycle()
@@ -429,19 +430,19 @@ def main(context: bpy.types.Context):
         if use_mirrorx is True:
             randomMirrorX = random.randint(0, 1)
             if randomMirrorX == 1:
-                op = bpy.ops.view3d.dreamuv_uvmirror(direction = "x")
+                bpy.ops.view3d.dreamuv_uvmirror(direction = "x")
 
         if use_mirrory is True:
             randomMirrorY = random.randint(0, 1)
             if randomMirrorY == 1:
-                op = bpy.ops.view3d.dreamuv_uvmirror(direction = "y")
+                bpy.ops.view3d.dreamuv_uvmirror(direction = "y")
 
         #apply material from index
         if context.scene.duv_hotspotmaterial is not None:
-            for face in HSfaces:   
+            for face in island_faces:   
                 face.material_index = mat_index
 
-    for face in faces:
+    for face in selected_faces:
         face.select = True
     bmesh.update_edit_mesh(active_object.data)
     bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, type='FACE')

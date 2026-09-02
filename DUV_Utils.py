@@ -384,9 +384,8 @@ def read_atlas(context: bpy.types.Context):
         new_subrect = SubRect()
         edge1 = xmax - xmin
         edge2 = ymax - ymin
-
         
-        rect = list()
+        rect: list[Vector] = list()
         
         for loop in face.loops:
             loop_uv = loop[uv_layer]
@@ -420,7 +419,7 @@ def read_atlas(context: bpy.types.Context):
 
 
             new_subrect.aspect = aspect
-            new_subrect.posaspect = posaspect
+            new_subrect.pos_aspect = posaspect
             new_subrect.size = size
             atlas.append(new_subrect)   
 
@@ -964,11 +963,9 @@ def square_fit(context: bpy.types.Context):
 
 class SubRect:
     aspect: int = int()
-    posaspect: int = int()
+    pos_aspect: int = int()
     size: float = float()
-    uvcoord = list()
+    uvcoord: list[Vector] = list()
 
 class Trim:
-    uvcoord = list()
-
-
+    uvcoord: list[Vector] = list()

@@ -7,6 +7,7 @@ from . import DUV_Utils
 
 def getymin(trim):
     return trim.ymin
+
 def getxmin(trim):
     return trim.xmin
 
