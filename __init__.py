@@ -1,17 +1,19 @@
+# pyright: reportAttributeAccessIssue=none, reportInvalidTypeForm=none
+
 #this script is dedicated to the public domain under CC0 (https://creativecommons.org/publicdomain/zero/1.0/)
 #do whatever you want with it! 
 
 bl_info = {
-    "name": "DreamUV",
+    "name": "DreamUV + Strata Hotspot Core",
     "category": "UV",
-    "author": "Bram Eulaers",
+    "author": "Bram Eulaers, Jadon L",
     "description": "Edit selected faces'UVs directly inside the 3D Viewport. WIP. Check for updates @leukbaars",
     "blender": (2, 90, 0),
     "version": (0, 9)
 }
 
 import bpy
-from bpy.props import EnumProperty, BoolProperty, FloatProperty, IntProperty, PointerProperty
+from bpy.props import BoolProperty, FloatProperty
 from . import DUV_UVTranslate 
 from . import DUV_UVRotate 
 from . import DUV_UVScale 
@@ -93,7 +95,7 @@ class DREAMUV_PT_uv(bpy.types.Panel):
     #    prefs = bpy.context.preferences.addons[__name__].preferences
     #    return prefs.show_panel_tools
 
-    def draw(self, context):
+    def draw(self, context: bpy.types.Context):
         addon_prefs = prefs()
         layout = self.layout
         box = layout.box()

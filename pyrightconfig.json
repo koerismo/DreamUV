@@ -1,4 +1,9 @@
 {
     "reportUnusedCallResult": "none",
-    "reportMissingModuleSource": "none"
+    "reportMissingModuleSource": "none",
+    "reportUnknownMemberType": "none",
+    "reportUnknownArgumentType": "none",
+    "reportUnknownVariableType": "none",
+    "reportOptionalMemberAccess": "warning",
+    "reportAny": "none"
 }

@@ -4,12 +4,12 @@ requires-python = ">=3.12"
 
 [manifest]
 members = [
-    "dreamuv",
+    "dreamuv-strata-core",
     "hotspotter-core",
 ]
 
 [[package]]
-name = "dreamuv"
+name = "dreamuv-strata-core"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

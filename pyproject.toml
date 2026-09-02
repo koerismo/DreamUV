@@ -1,5 +1,5 @@
 [project]
-name = "dreamuv"
+name = "dreamuv-strata-core"
 version = "0.1.0"
 description = "DreamUV is a collection of tools that allow you to manipulate UVs in the 3D viewport."
 readme = "README.md"

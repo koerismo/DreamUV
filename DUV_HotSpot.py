@@ -1,13 +1,19 @@
+from math import inf
+from typing import TYPE_CHECKING
+
 import bpy
 import bmesh
-import math
 import random
 from mathutils import Vector
 from . import DUV_Utils
 from bpy.props import EnumProperty, BoolProperty, StringProperty, FloatProperty, IntProperty
 
+if TYPE_CHECKING:
+    import hotspotter_core as hsc
+else:
+    from . import cpp as hsc
 
-def main(context):
+def main(context: bpy.types.Context):
     #Check if an atlas object exists
     if context.scene.subrect_atlas is None:
         print("DreamUV: No valid atlas selected!")
@@ -17,7 +23,7 @@ def main(context):
     #anything else. Without this check, if the active object is missing or
     #isn't a mesh (e.g. an empty/atlas reference object got left active),
     #editmode_toggle()/mode_set() below fail with "poll() failed, context is incorrect".
-    active_obj = bpy.context.view_layer.objects.active
+    active_obj: bpy.types.Object | None = bpy.context.view_layer.objects.active
     if active_obj is None or active_obj.type != 'MESH':
         print("DreamUV: No valid active mesh object selected, aborting HotSpot.")
         return {'CANCELLED'}
@@ -28,9 +34,9 @@ def main(context):
     
         
     #check for object or edit mode:
-    objectmode = False
+    is_object_mode = False
     if active_obj.mode == 'OBJECT':
-        objectmode = True
+        is_object_mode = True
         #switch to edit and select all
         #FIX: use mode_set(mode='EDIT') with an explicit context override instead of
         #editmode_toggle(). mode_set() only requires an active object to pass its
@@ -41,69 +47,76 @@ def main(context):
         bpy.ops.mesh.select_all(action='SELECT')
 
     #check if uv sync selection is used and turn off if so
-    uvsync = False
+    use_uv_sync = False
     if bpy.context.scene.tool_settings.use_uv_select_sync == True:
-        uvsync = True
+        use_uv_sync = True
         bpy.context.scene.tool_settings.use_uv_select_sync = False
 
 
-    obj = bpy.context.view_layer.objects.active
-    bm = bmesh.from_edit_mesh(obj.data)
+    active_object: bpy.types.Object = bpy.context.view_layer.objects.active
+
+    assert isinstance(active_object.data, bpy.types.Mesh), "DreamUV: Active object must be a mesh!"
+    bm = bmesh.from_edit_mesh(active_object.data)
 
     #ADD MATERIAL
     if context.scene.duv_hotspotmaterial is not None:
-        matindex = 0
-        doesmatexist = False
-        for m in obj.data.materials:
-            if m == context.scene.duv_hotspotmaterial:
-                doesmatexist = True
+        mat_index = 0
+        mat_exists = False
+        for slot in active_object.data.materials:
+            if slot == context.scene.duv_hotspotmaterial:
+                mat_exists = True
                 break
-            matindex += 1
-        if doesmatexist is False:
-            obj.data.materials.append(context.scene.duv_hotspotmaterial)
+            mat_index += 1
+        
+        if mat_exists is False:
+            active_object.data.materials.append(context.scene.duv_hotspotmaterial)
+        
         for face in bm.faces:
             if face.select: 
-                face.material_index = matindex
-    bmesh.update_edit_mesh(obj.data)
+                face.material_index = mat_index
+    
+    bmesh.update_edit_mesh(active_object.data)
 
     #CREATE WORKING DUPLICATE!
-    object_original = bpy.context.view_layer.objects.active
+    object_original: bpy.types.Object = bpy.context.view_layer.objects.active
+    
     bpy.ops.object.editmode_toggle()
     bpy.ops.object.duplicate()
     
     #setup hard edges on duplicate 
     #create hard edges 
     
-        
+    assert bpy.context.active_object, "DreamUV: Duplicated object was not made active!"
+
     #bpy.ops.object.shade_smooth_by_angle()
+    use_smooth_modifier = False
+    for slot in bpy.context.active_object.modifiers:
+        if slot.name == 'Auto Smooth' or slot.name == 'Smooth by Angle':
+            use_smooth_modifier = True
     
-    smoothmodifier = False
-    for m in bpy.context.active_object.modifiers:
-        if m.name == 'Auto Smooth' or m.name == 'Smooth by Angle':
-            smoothmodifier = True
-    
-    if smoothmodifier:
+    if use_smooth_modifier:
         #apply smoothing modifier
         bpy.ops.object.modifier_apply(modifier="Smooth by Angle")
     else:
         #auto smooth - assume 30 degrees until someone complains
         bpy.ops.object.shade_smooth_by_angle(angle=0.523599)
-        
     
     bpy.ops.object.editmode_toggle()
     bpy.context.view_layer.objects.active.name = "dreamuv_temp"
     object_temporary = bpy.context.view_layer.objects.active
 
     #PREPROCESS - save seams and hard edges
-    obj = bpy.context.view_layer.objects.active
-    bm = bmesh.from_edit_mesh(obj.data)
+    active_object = bpy.context.view_layer.objects.active
+    assert isinstance(active_object.data, bpy.types.Mesh), "DreamUV: Active object must be a mesh!"
+
+    bm = bmesh.from_edit_mesh(active_object.data)
 
     faces = list()
     for face in bm.faces:
         if face.select:
             faces.append(face)
 
-    bmesh.update_edit_mesh(obj.data)
+    bmesh.update_edit_mesh(active_object.data)
     bpy.ops.mesh.select_all(action='DESELECT')
     bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, type='EDGE')
     
@@ -122,14 +135,6 @@ def main(context):
     bpy.ops.mesh.edge_split(type='EDGE')
     bpy.ops.mesh.select_all(action='DESELECT')
 
-    
-    
-    
-    
-    
-    
-    
-    
 
     #select all faces to be hotspotted again:
     
@@ -144,17 +149,18 @@ def main(context):
     #iterate using select linked uv
 
     islands = list()        
-    tempfaces = list()
-    updatedfaces = list()
+    temp_faces = list()
+    updated_faces = list()
     #MAKE FACE LIST
+    
     for face in bm.faces:
         if face.select:
-            updatedfaces.append(face)
-            tempfaces.append(face)
+            updated_faces.append(face)
+            temp_faces.append(face)
             face.select = False
            
-    while len(tempfaces) > 0:
-        updatedfaces[0].select = True
+    while len(temp_faces) > 0:
+        updated_faces[0].select = True
         bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, type='FACE')
         bpy.ops.mesh.select_linked(delimit={'UV'})
 
@@ -165,15 +171,16 @@ def main(context):
         islands.append(islandfaces)
 
         #create updated list
-        tempfaces.clear()
-        for face in updatedfaces:
+        temp_faces.clear()
+        for face in updated_faces:
             if face.select == False:
-                tempfaces.append(face)
+                temp_faces.append(face)
             else:
                 face.select = False 
+        
         #make new list into updated list
-        updatedfaces.clear()
-        updatedfaces = tempfaces.copy()
+        updated_faces.clear()
+        updated_faces = temp_faces.copy()
 
     bpy.ops.uv.select_all(action='SELECT')
 
@@ -211,7 +218,7 @@ def main(context):
             
             #return {'FINISHED'}
         
-            bmesh.update_edit_mesh(obj.data)
+            bmesh.update_edit_mesh(active_object.data)
             bpy.ops.uv.unwrap(method='CONFORMAL', margin=0.001)
             uv_layer = bm.loops.layers.uv.verify()
 
@@ -219,15 +226,18 @@ def main(context):
         DUV_Utils.get_orientation(context)
 
         #FIT TO 0-1 range
-        xmin, xmax = HSfaces[0].loops[0][uv_layer].uv.x, HSfaces[0].loops[0][uv_layer].uv.x
-        ymin, ymax = HSfaces[0].loops[0][uv_layer].uv.y, HSfaces[0].loops[0][uv_layer].uv.y
-        
-        for face in HSfaces: 
-            for vert in face.loops:
-                xmin = min(xmin, vert[uv_layer].uv.x)
-                xmax = max(xmax, vert[uv_layer].uv.x)
-                ymin = min(ymin, vert[uv_layer].uv.y)
-                ymax = max(ymax, vert[uv_layer].uv.y)
+        if len(HSfaces):
+            xmin, ymin = inf, inf
+            xmax, ymax = -inf, -inf
+            for face in HSfaces: 
+                for vert in face.loops:
+                    xmin = min(xmin, vert[uv_layer].uv.x)
+                    xmax = max(xmax, vert[uv_layer].uv.x)
+                    ymin = min(ymin, vert[uv_layer].uv.y)
+                    ymax = max(ymax, vert[uv_layer].uv.y)
+        else:
+            xmin, ymin = 0, 0
+            xmax, ymax = 1, 1
 
         #prevent divide by 0:
         if (xmax - xmin) == 0:
@@ -235,25 +245,26 @@ def main(context):
         if (ymax - ymin) == 0:
             ymin = .1
 
+        edge_x = xmax - xmin
+        edge_y = ymax - ymin
+
         for face in HSfaces:
             for loop in face.loops:
                 loop[uv_layer].uv.x -= xmin
                 loop[uv_layer].uv.y -= ymin
-                loop[uv_layer].uv.x /= (xmax-xmin)
-                loop[uv_layer].uv.y /= (ymax-ymin)
+                loop[uv_layer].uv.x /= edge_x
+                loop[uv_layer].uv.y /= edge_y
 
-        edge1 = xmax-xmin
-        edge2 = ymax-ymin
-        aspect = edge1/edge2
-        size = area = sum(f.calc_area() for f in HSfaces if f.select)
+        aspect = edge_x/edge_y
+        size = sum(f.calc_area() for f in HSfaces if f.select)
         
         if is_rect is False:
             #calulate ratio empty vs full
-            sizeratio = DUV_Utils.get_uv_ratio(context)
+            size_ratio = DUV_Utils.get_uv_ratio(context)
             #prevent divide by 0:
-            if sizeratio == 0:
-                sizeratio = 1.0
-            size = size / sizeratio 
+            if size_ratio == 0:
+                size_ratio = 1.0
+            size = size / size_ratio 
 
         if aspect > 1:
             aspect = round(aspect)
@@ -267,82 +278,81 @@ def main(context):
         #find closest aspect ratio in list
 
         #2 variations depending on tall or wide
-        
-        index = 0
-        templength = abs(atlas[0].posaspect-aspect)
-        tempindex = 0
 
-        worldorientation = context.scene.duv_useorientation
-        
-        if worldorientation:
+        index = 0
+        temp_length = abs(atlas[0].posaspect-aspect)
+        temp_index = 0
+
+        use_world_orientation = context.scene.duv_useorientation
+
+        if use_world_orientation:
             for number in atlas:
-                    testlength = abs(number.aspect-aspect) 
-                    if testlength < templength:
-                        templength = testlength
-                        tempindex = index
+                    test_length = abs(number.aspect-aspect) 
+                    if test_length < temp_length:
+                        temp_length = test_length
+                        temp_index = index
                     index += 1
 
-        if not worldorientation:
-                
+        if not use_world_orientation:
             #wide:
             if aspect >= 1.0:
                 for number in atlas:
-                    testlength = abs(number.posaspect-aspect) 
-                    if testlength < templength:
-                        templength = testlength
-                        tempindex = index
+                    test_length = abs(number.posaspect-aspect) 
+                    if test_length < temp_length:
+                        temp_length = test_length
+                        temp_index = index
                     index += 1
-            
+
             #tall:
-            if aspect < 1.0:
-                templength = abs((atlas[0].posaspect)-(1/aspect))
+            else:
+                temp_length = abs((atlas[0].posaspect)-(1/aspect))
                 for number in atlas:
-                    testlength = abs((number.posaspect)-(1/aspect)) 
-                    if testlength < templength:
-                        templength = testlength
-                        tempindex = index
+                    test_length = abs((number.posaspect)-(1/aspect)) 
+                    if test_length < temp_length:
+                        temp_length = test_length
+                        temp_index = index
                     index += 1
 
         #NOW MAKE LIST OF ASPECTS!
-        flipped = False
-        aspectbucket = list()
+        aspect_bucket = list()
+
         for r in atlas:
-            if r.aspect == atlas[tempindex].aspect:
-                aspectbucket.append(r)
-            if worldorientation is False:
-                if r.aspect == 1/atlas[tempindex].aspect:
-                    aspectbucket.append(r)
+            if r.aspect == atlas[temp_index].aspect:
+                aspect_bucket.append(r)
+            if use_world_orientation is False:
+                if r.aspect == 1/atlas[temp_index].aspect:
+                    aspect_bucket.append(r)
 
         #find closest size in bucket:
         index = 0
 
-        templength = abs(aspectbucket[0].size-size)
-        tempindex = 0
+        temp_length = abs(aspect_bucket[0].size - size)
+        temp_index = 0
 
         validrects = list()
-        for a in aspectbucket:
-            testlength = abs(a.size-size) 
-            if testlength <= templength:
-                templength = testlength
-                tempindex = index
+        for a in aspect_bucket:
+            test_length = abs(a.size-size) 
+            if test_length <= temp_length:
+                temp_length = test_length
+                temp_index = index
             index += 1
         
         index = 0
-        for a in aspectbucket:
-            if a.size == aspectbucket[tempindex].size:
+        for a in aspect_bucket:
+            if a.size == aspect_bucket[temp_index].size:
                 validrects.append(index)
             index += 1
 
-        tempindex = random.choice(validrects)
+        temp_index = random.choice(validrects)
 
         #test if coords are already asigned by comparing minmaxes, then try again
 
         #2 assign uv
         #get minmax of target rect
-        xmin, xmax = aspectbucket[tempindex].uvcoord[0].x, aspectbucket[tempindex].uvcoord[0].x
-        ymin, ymax = aspectbucket[tempindex].uvcoord[0].y, aspectbucket[tempindex].uvcoord[0].y
+        xmin, xmax = aspect_bucket[temp_index].uvcoord[0].x, aspect_bucket[temp_index].uvcoord[0].x
+        ymin, ymax = aspect_bucket[temp_index].uvcoord[0].y, aspect_bucket[temp_index].uvcoord[0].y
 
-        for vert in aspectbucket[tempindex].uvcoord:
+        for vert in aspect_bucket[temp_index].uvcoord:
             
             xmin = min(xmin, vert.x)
             xmax = max(xmax, vert.x)
@@ -353,15 +363,15 @@ def main(context):
 
         if xmin == xmin2 and ymin == ymin2 and xmax == xmax2 and ymax == ymax2 and len(validrects) > 1:
             #remove current choice
-            validrects.remove(tempindex)
+            validrects.remove(temp_index)
             #print(validrects)
 
-            tempindex = random.choice(validrects)
+            temp_index = random.choice(validrects)
 
-            xmin, xmax = aspectbucket[tempindex].uvcoord[0].x, aspectbucket[tempindex].uvcoord[0].x
-            ymin, ymax = aspectbucket[tempindex].uvcoord[0].y, aspectbucket[tempindex].uvcoord[0].y
+            xmin, xmax = aspect_bucket[temp_index].uvcoord[0].x, aspect_bucket[temp_index].uvcoord[0].x
+            ymin, ymax = aspect_bucket[temp_index].uvcoord[0].y, aspect_bucket[temp_index].uvcoord[0].y
 
-            for vert in aspectbucket[tempindex].uvcoord:
+            for vert in aspect_bucket[temp_index].uvcoord:
                 xmin = min(xmin, vert.x)
                 xmax = max(xmax, vert.x)
                 ymin = min(ymin, vert.y)
@@ -369,7 +379,7 @@ def main(context):
 
         #flip U and V if aspect is reversed:
         #WIDE case becomes TALL
-        if aspectbucket[tempindex].aspect < 1.0 and aspect >= 1.0:
+        if aspect_bucket[temp_index].aspect < 1.0 and aspect >= 1.0:
             for face in HSfaces:
                 for loop in face.loops:
                     newx = loop[uv_layer].uv.y
@@ -378,7 +388,7 @@ def main(context):
                     loop[uv_layer].uv.y = newy
         
         #TALL case becomes WIDE
-        if aspectbucket[tempindex].aspect > 1.0 and aspect < 1.0:
+        if aspect_bucket[temp_index].aspect > 1.0 and aspect < 1.0:
             for face in HSfaces:
                 for loop in face.loops:
                     newx = loop[uv_layer].uv.y
@@ -388,7 +398,7 @@ def main(context):
 
         #check if uv needs to be inset
         if context.scene.duv_hotspotuseinset is True:
-            pixel_inset = context.scene.hotspotinsetpixels/context.scene.hotspotinsettexsize
+            pixel_inset = context.scene.hotspotinsetpixels / context.scene.hotspotinsettexsize
             xmin += pixel_inset
             xmax -= pixel_inset
             ymin += pixel_inset
@@ -402,13 +412,13 @@ def main(context):
                 loop[uv_layer].uv.x += xmin
                 loop[uv_layer].uv.y += ymin
 
-        worldorientation = context.scene.duv_useorientation
+        use_world_orientation = context.scene.duv_useorientation
         use_mirrorx = context.scene.duv_usemirrorx
         use_mirrory = context.scene.duv_usemirrory
 
         #MIRRORING:
 
-        if worldorientation is False:
+        if use_world_orientation is False:
             #flip around square aspects randomly
             if aspect == 1:
                 flips = random.randint(0, 3)
@@ -429,17 +439,17 @@ def main(context):
         #apply material from index
         if context.scene.duv_hotspotmaterial is not None:
             for face in HSfaces:   
-                face.material_index = matindex
+                face.material_index = mat_index
 
     for face in faces:
         face.select = True
-    bmesh.update_edit_mesh(obj.data)
+    bmesh.update_edit_mesh(active_object.data)
     bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, type='FACE')
 
     #transfer UV maps back to original mesh
     
-    obj = bpy.context.view_layer.objects.active
-    bm = bmesh.from_edit_mesh(obj.data) 
+    active_object = bpy.context.view_layer.objects.active
+    bm = bmesh.from_edit_mesh(active_object.data) 
     uv_layer = bm.loops.layers.uv.verify()
     uv_backup = list();
     #print("new UV:")
@@ -459,8 +469,8 @@ def main(context):
     object_original.select_set(True)
     bpy.ops.object.editmode_toggle()
     
-    obj = object_original
-    bm = bmesh.from_edit_mesh(obj.data) 
+    active_object = object_original
+    bm = bmesh.from_edit_mesh(active_object.data) 
     uv_layer = bm.loops.layers.uv.verify()
     #uv_backup = list();
     #print("new UV:")
@@ -468,7 +478,7 @@ def main(context):
         for vert, backupuv in zip(face.loops, backupface):
             vert[uv_layer].uv.x = backupuv[0]
             vert[uv_layer].uv.y = backupuv[1]
-    bmesh.update_edit_mesh(obj.data)
+    bmesh.update_edit_mesh(active_object.data)
     
            
     
@@ -480,13 +490,13 @@ def main(context):
     object_original.select_set(True)
     context.view_layer.objects.active=bpy.context.selected_objects[0]
     
-    if uvsync == True:
+    if use_uv_sync == True:
         bpy.ops.object.editmode_toggle()
         bpy.context.scene.tool_settings.use_uv_select_sync = True
         bpy.ops.object.editmode_toggle()
         
     
-    if objectmode is False:
+    if is_object_mode is False:
         bpy.ops.object.editmode_toggle() 
     
     #temp - do both uvs!

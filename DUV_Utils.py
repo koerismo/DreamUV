@@ -1,3 +1,4 @@
+from bmesh.types import BMFace
 import bpy
 import bmesh
 import math
@@ -5,7 +6,7 @@ import random
 from mathutils import Vector
 
 
-def get_face_pixel_step(context, face):
+def get_face_pixel_step(context: bpy.types.Context, face: bpy.types.MeshPolygon):
     """
     Finds the UV space amount for one pixel of a face, if it is textured
     :param context:
@@ -40,11 +41,7 @@ def get_face_pixel_step(context, face):
     return pixel_step
 
 
-
-
-
-
-def get_orientation(context):
+def get_orientation(context: bpy.types.Context) -> None:
     obj = bpy.context.view_layer.objects.active
     bm = bmesh.from_edit_mesh(obj.data)
     uv_layer = bm.loops.layers.uv.verify()
@@ -359,12 +356,8 @@ def get_uv_ratio(context):
     return size
 
 
-
-
-
-
-def read_atlas(context):
-    atlas = list()
+def read_atlas(context: bpy.types.Context):
+    atlas: list[SubRect] = list()
     obj = context.scene.subrect_atlas
     me = obj.data
     bm = bmesh.new()
@@ -372,7 +365,7 @@ def read_atlas(context):
     uv_layer = bm.loops.layers.uv.verify()
     #lets read coords
 
-    faces = list()
+    faces: list[BMFace] = list()
 
     #MAKE FACE LIST
     for face in bm.faces:
@@ -388,7 +381,7 @@ def read_atlas(context):
             ymin = min(ymin, vert[uv_layer].uv.y)
             ymax = max(ymax, vert[uv_layer].uv.y)
 
-        new_subrect = subrect()
+        new_subrect = SubRect()
         edge1 = xmax - xmin
         edge2 = ymax - ymin
 
@@ -432,9 +425,6 @@ def read_atlas(context):
             atlas.append(new_subrect)   
 
     return atlas
-
-
-
 
 
 
@@ -518,14 +508,10 @@ def donut_uv_fixer(context):
         f.select = True
 
     return True
-    
 
 
 
-
-
-
-def square_fit(context):
+def square_fit(context: bpy.types.Context):
 
        
     #return {'FINISHED'}
@@ -580,8 +566,7 @@ def square_fit(context):
             if hasattr(bpy.ops.mesh, "select_edge_loop_multi"):
                 bpy.ops.mesh.select_edge_loop_multi()
             else:
-                bpy.ops.mesh.loop_multi_select(ring=False)
-            
+                bpy.ops.mesh.loop_multi_select(ring=False) # pyright: ignore[reportAttributeAccessIssue]
         
         else:
             #walk through the boundary where the active edge exists to deselect them without deselecting the other boundary
@@ -653,8 +638,6 @@ def square_fit(context):
         #reset selection
         for f in faces:
             f.select = True 
-    
-    
 
     #SLOW HERE, find faster way to test if selection is ring shaped
 
@@ -979,16 +962,13 @@ def square_fit(context):
 
 
 
-
-
-
-class subrect:
-    aspect = int()
-    posaspect = int()
-    size = float()
+class SubRect:
+    aspect: int = int()
+    posaspect: int = int()
+    size: float = float()
     uvcoord = list()
 
-class trim:
+class Trim:
     uvcoord = list()
 
 
