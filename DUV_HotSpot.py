@@ -1,18 +1,13 @@
 from math import inf
-from typing import TYPE_CHECKING
 
 from bmesh.types import BMFace
 import bpy
 import bmesh
 import random
-from mathutils import Vector
 from . import DUV_Utils
-from bpy.props import EnumProperty, BoolProperty, StringProperty, FloatProperty, IntProperty
+# from bpy.props import EnumProperty, BoolProperty, StringProperty, FloatProperty, IntProperty
 
-if TYPE_CHECKING:
-    import hotspotter_core as hsc
-else:
-    from . import cpp as hsc
+import hotspotter_core as hsc
 
 def main(context: bpy.types.Context):
     #Check if an atlas object exists
@@ -188,6 +183,31 @@ def main(context: bpy.types.Context):
     #get atlas
     atlas = DUV_Utils.read_atlas(context)
 
+    use_world_orientation = context.scene.duv_useorientation
+
+    # region: MODIFIED PART: BUILD HSC ATLAS
+    # ----------------------------------------------------------
+
+    hsc_flags = hsc.RectFlags_t.enable_rotation.value # | hsc.RectFlags_t.tile_x_y.value
+    hsc_atlas: list[hsc.Rect] = [
+        hsc.Rect(
+                hsc_flags,
+                hsc.Vec2f(*rect.bounds.xy),
+                hsc.Vec2f(*rect.bounds.zw)
+            ) for rect in atlas
+    ]
+
+    def print_vec2(r: hsc.Vec2f | hsc.Vec2i) -> str:
+        return f'({r.x}, {r.y})'
+
+    def print_rect(r: hsc.Rect) -> str:
+        return f'Rect({print_vec2(r.mins), print_vec2(r.maxs)})'
+
+
+    print("--- HCS ATLAS ---")
+    print("\n".join([print_rect(x) for x in hsc_atlas]))
+    print("--- END HCS ATLAS ---")
+
     #NOW ITERATE!
     for island in islands:
         uv_layer = bm.loops.layers.uv.verify()
@@ -238,13 +258,13 @@ def main(context: bpy.types.Context):
                     ymin = min(ymin, vert[uv_layer].uv.y)
                     ymax = max(ymax, vert[uv_layer].uv.y)
         else:
-            xmin, ymin = 0, 0
-            xmax, ymax = 1, 1
+            xmin, ymin = 0.0, 0.0
+            xmax, ymax = 1.0, 1.0
 
         #prevent divide by 0:
-        if (xmax - xmin) == 0:
+        if (xmax - xmin) == 0.0:
             xmin = .1
-        if (ymax - ymin) == 0:
+        if (ymax - ymin) == 0.0:
             ymin = .1
 
         edge_x = xmax - xmin
@@ -260,19 +280,19 @@ def main(context: bpy.types.Context):
         island_aspect = edge_x / edge_y
         island_area: float = sum(f.calc_area() for f in island_faces if f.select)
         
-        if is_rect is False:
-            #calulate ratio empty vs full
-            size_ratio = DUV_Utils.get_uv_ratio(context)
-            #prevent divide by 0:
-            if size_ratio == 0:
-                size_ratio = 1.0
-            island_area = island_area / size_ratio
+        # if is_rect is False:
+        #     #calulate ratio empty vs full
+        #     size_ratio = DUV_Utils.get_uv_ratio(context)
+        #     #prevent divide by 0:
+        #     if size_ratio == 0:
+        #         size_ratio = 1.0
+        #     island_area = island_area / size_ratio
 
-        if island_aspect > 1:
-            island_aspect = round(island_aspect)
-        else: 
-            if island_aspect > 0.0001: #prevent divide by 0
-                island_aspect = 1/(round(1/island_aspect))
+        # if island_aspect > 1:
+        #     island_aspect = round(island_aspect)
+        # else: 
+        #     if island_aspect > 0.0001: #prevent divide by 0
+        #         island_aspect = 1/(round(1/island_aspect))
 
         #ASPECT LOWER THAN 1.0 = TALL
         #ASPECT HIGHER THAN 1.0 = WIDE
@@ -281,121 +301,90 @@ def main(context: bpy.types.Context):
 
         #2 variations depending on tall or wide
 
-        index = 0
-        temp_length = abs(atlas[0].pos_aspect - island_aspect)
-        temp_index = 0
+        # index = 0
+        # temp_length = abs(atlas[0].pos_aspect - island_aspect)
 
-        use_world_orientation = context.scene.duv_useorientation
+        # if use_world_orientation:
+        #     for rect in atlas:
+        #             test_length = abs(rect.aspect - island_aspect) 
+        #             if test_length < temp_length:
+        #                 temp_length = test_length
+        #                 temp_index = index
+        #             index += 1
 
-        if use_world_orientation:
-            for number in atlas:
-                    test_length = abs(number.aspect-island_aspect) 
-                    if test_length < temp_length:
-                        temp_length = test_length
-                        temp_index = index
-                    index += 1
+        # if not use_world_orientation:
+            
+        #     #wide:
+        #     if island_aspect >= 1.0:
+        #         for rect in atlas:
+        #             test_length = abs(rect.pos_aspect - island_aspect) 
+        #             if test_length < temp_length:
+        #                 temp_length = test_length
+        #                 temp_index = index
+        #             index += 1
 
-        if not use_world_orientation:
-            #wide:
-            if island_aspect >= 1.0:
-                for number in atlas:
-                    test_length = abs(number.pos_aspect-island_aspect) 
-                    if test_length < temp_length:
-                        temp_length = test_length
-                        temp_index = index
-                    index += 1
-
-            #tall:
-            else:
-                temp_length = abs((atlas[0].pos_aspect)-(1/island_aspect))
-                for number in atlas:
-                    test_length = abs((number.pos_aspect)-(1/island_aspect)) 
-                    if test_length < temp_length:
-                        temp_length = test_length
-                        temp_index = index
-                    index += 1
+        #     #tall:
+        #     else:
+        #         temp_length = abs((atlas[0].pos_aspect)-(1/island_aspect))
+        #         for rect in atlas:
+        #             test_length = abs((rect.pos_aspect)-(1/island_aspect)) 
+        #             if test_length < temp_length:
+        #                 temp_length = test_length
+        #                 temp_index = index
+        #             index += 1
 
         #NOW MAKE LIST OF ASPECTS!
-        aspect_bucket = list()
+        # aspect_bucket = list()
 
-        for r in atlas:
-            if r.aspect == atlas[temp_index].aspect:
-                aspect_bucket.append(r)
-            if use_world_orientation is False:
-                if r.aspect == 1 / atlas[temp_index].aspect:
-                    aspect_bucket.append(r)
+        # for r in atlas:
+        #     if r.aspect == atlas[temp_index].aspect:
+        #         aspect_bucket.append(r)
+        #     if use_world_orientation is False:
+        #         if r.aspect == 1 / atlas[temp_index].aspect:
+        #             aspect_bucket.append(r)
 
-        #find closest size in bucket:
-        index = 0
+        # #find closest size in bucket:
+        # index = 0
 
-        temp_length = abs(aspect_bucket[0].size - island_area)
-        temp_index = 0
+        # temp_length = abs(aspect_bucket[0].size - island_area)
+        # temp_index = 0
 
-        valid_rects = list()
-        for a in aspect_bucket:
-            test_length = abs(a.size-island_area) 
-            if test_length <= temp_length:
-                temp_length = test_length
-                temp_index = index
-            index += 1
+        # valid_rects = list()
+        # for a in aspect_bucket:
+        #     test_length = abs(a.size-island_area) 
+        #     if test_length <= temp_length:
+        #         temp_length = test_length
+        #         temp_index = index
+        #     index += 1
         
-        index = 0
-        for a in aspect_bucket:
-            if a.size == aspect_bucket[temp_index].size:
-                valid_rects.append(index)
-            index += 1
+        # index = 0
+        # for a in aspect_bucket:
+        #     if a.size == aspect_bucket[temp_index].size:
+        #         valid_rects.append(index)
+        #     index += 1
 
-        temp_index = random.choice(valid_rects)
+        # temp_index = random.choice(valid_rects)
 
         #test if coords are already asigned by comparing minmaxes, then try again
 
-        #2 assign uv
-        #get minmax of target rect
-        xmin, xmax = aspect_bucket[temp_index].uvcoord[0].x, aspect_bucket[temp_index].uvcoord[0].x
-        ymin, ymax = aspect_bucket[temp_index].uvcoord[0].y, aspect_bucket[temp_index].uvcoord[0].y
+        edge_scale = context.scene.duvhotspotscale
+        hsc_surface = hsc.Vec2f(edge_x * edge_scale, edge_y * edge_scale)
+        hsc_output = hsc.RectFitResult(-1, False)
+        hsc_idx = hsc.fit_rect_to_surface(hsc_atlas, hsc_surface, hsc_output)
 
-        for vert in aspect_bucket[temp_index].uvcoord:
-            xmin = min(xmin, vert.x)
-            xmax = max(xmax, vert.x)
-            ymin = min(ymin, vert.y)
-            ymax = max(ymax, vert.y)
+        print('idx:', hsc_idx, 'score:', hsc_output.score, 'rotated:', hsc_output.rotated, 'oidx:', hsc_output.rect_idx, 'tiling:', print_vec2(hsc_output.tiling))
+
+        target_rect = hsc_atlas[hsc_idx]
+        print(target_rect.get_width(), target_rect.get_height())
+        target_rect.maxs = hsc.Vec2f(
+            target_rect.maxs.x + (hsc_output.tiling.x - 1) * target_rect.get_width(),
+            target_rect.maxs.y + (hsc_output.tiling.y - 1) * target_rect.get_height()
+        )
+        print(target_rect.get_width(), target_rect.get_height())
+        xmin, xmax = target_rect.mins.x, target_rect.maxs.x
+        ymin, ymax = target_rect.mins.y, target_rect.maxs.y
 
         #flip if aspect is inverted
-
-        if xmin == xmin2 and ymin == ymin2 and xmax == xmax2 and ymax == ymax2 and len(valid_rects) > 1:
-            #remove current choice
-            valid_rects.remove(temp_index)
-            #print(validrects)
-
-            temp_index = random.choice(valid_rects)
-
-            xmin, xmax = aspect_bucket[temp_index].uvcoord[0].x, aspect_bucket[temp_index].uvcoord[0].x
-            ymin, ymax = aspect_bucket[temp_index].uvcoord[0].y, aspect_bucket[temp_index].uvcoord[0].y
-
-            for vert in aspect_bucket[temp_index].uvcoord:
-                xmin = min(xmin, vert.x)
-                xmax = max(xmax, vert.x)
-                ymin = min(ymin, vert.y)
-                ymax = max(ymax, vert.y)
-
-        #flip U and V if aspect is reversed:
-        #WIDE case becomes TALL
-        if aspect_bucket[temp_index].aspect < 1.0 and island_aspect >= 1.0:
-            for face in island_faces:
-                for loop in face.loops:
-                    newx = loop[uv_layer].uv.y
-                    newy = loop[uv_layer].uv.x
-                    loop[uv_layer].uv.x = newx
-                    loop[uv_layer].uv.y = newy
-        
-        #TALL case becomes WIDE
-        if aspect_bucket[temp_index].aspect > 1.0 and island_aspect < 1.0:
-            for face in island_faces:
-                for loop in face.loops:
-                    newx = loop[uv_layer].uv.y
-                    newy = loop[uv_layer].uv.x
-                    loop[uv_layer].uv.x = newx
-                    loop[uv_layer].uv.y = newy
 
         #check if uv needs to be inset
         if context.scene.duv_hotspotuseinset is True:
@@ -419,12 +408,9 @@ def main(context: bpy.types.Context):
 
         #MIRRORING:
 
-        if use_world_orientation is False:
-            #flip around square aspects randomly
-            if island_aspect == 1:
-                flips = random.randint(0, 3)
-                for x in range(flips):
-                    bpy.ops.view3d.dreamuv_uvcycle()
+        if hsc_output.rotated:
+            for _ in range(3 if random.random() > 0.5 else 1):
+                bpy.ops.view3d.dreamuv_uvcycle()
         
         #and also do randomized mirroring:
         if use_mirrorx is True:

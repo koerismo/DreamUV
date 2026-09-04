@@ -415,12 +415,11 @@ def read_atlas(context: bpy.types.Context):
 
             size = float('%.2g' % size) #round to 2 significant digits
 
-            
-
-
+    
             new_subrect.aspect = aspect
             new_subrect.pos_aspect = posaspect
             new_subrect.size = size
+            new_subrect.bounds = Vector((xmin, ymin, xmax, ymax))
             atlas.append(new_subrect)   
 
     return atlas
@@ -488,7 +487,6 @@ def donut_uv_fixer(context):
     startloop.edge.select = False
     sorted_vert_list.append(startloop.link_loop_next.vert)
     
-    print("CHECKING DOUNt!!!!")
     for i in range(1,len(edge_list)-1):
         #catch if a patch is donut shaped:
         if i >= len(sorted_vert_list):
@@ -966,6 +964,7 @@ class SubRect:
     pos_aspect: int = int()
     size: float = float()
     uvcoord: list[Vector] = list()
+    bounds: Vector = Vector((0, 0, 0, 0))
 
 class Trim:
     uvcoord: list[Vector] = list()

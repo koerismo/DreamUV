@@ -1,4 +1,3 @@
-#include <complex>
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/vector.h>
 
@@ -55,7 +54,15 @@ NB_MODULE(_core, m) {
        ;
     
     nb::class_<hs::Rect>(m, "Rect")
-       .def(nb::init<uint16_t, hs::Vec2i, hs::Vec2i>(), nb::arg("flags"), nb::arg("mins"), nb::arg("maxs"))
+       .def(nb::init<uint16_t, hs::Vec2f, hs::Vec2f>(), nb::arg("flags"), nb::arg("mins"), nb::arg("maxs"))
+       .def_prop_rw("mins",
+                    [](hs::Rect &t) { return t.mins; },
+                    [](hs::Rect &t, hs::Vec2f v) { t.mins = v; }
+                )
+       .def_prop_rw("maxs",
+                    [](hs::Rect &t) { return t.maxs; },
+                    [](hs::Rect &t, hs::Vec2f v) { t.maxs = v; }
+                )
        .def("get_width", &hs::Rect::GetWidth)
        .def("get_height", &hs::Rect::GetHeight)
        .def("can_rotate", &hs::Rect::CanRotate)
@@ -68,10 +75,22 @@ NB_MODULE(_core, m) {
     
     nb::class_<hs::RectFitResult>(m, "RectFitResult")
        .def(nb::init<int, bool>(), nb::arg("rect_idx"), nb::arg("rotated"))
-       .def_prop_ro("rect_idx", [](hs::RectFitResult &t) { return t.rect_idx; })
-       .def_prop_ro("tiling", [](hs::RectFitResult &t) { return t.tiling; })
-       .def_prop_ro("rotated", [](hs::RectFitResult &t) { return t.rotated; })
-       .def_prop_ro("score", [](hs::RectFitResult &t) { return t.score; })
+       .def_prop_rw("rect_idx",
+                    [](hs::RectFitResult &t) { return t.rect_idx; },
+                    [](hs::RectFitResult &t, int v) { t.rect_idx = v; }
+                )
+       .def_prop_rw("tiling",
+                    [](hs::RectFitResult &t) { return t.tiling; },
+                    [](hs::RectFitResult &t, hs::Vec2i v) { t.tiling = v; }
+                )
+       .def_prop_rw("rotated",
+                    [](hs::RectFitResult &t) { return t.rotated; },
+                    [](hs::RectFitResult &t, bool v) { t.rotated = v; }
+                )
+       .def_prop_rw("score",
+                    [](hs::RectFitResult &t) { return t.score; },
+                    [](hs::RectFitResult &t, float v) { t.score = v; }
+                )
        ;
 
     nb::class_<hs::RectFile>(m, "RectFile")

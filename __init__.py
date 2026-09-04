@@ -33,6 +33,7 @@ from . import DUV_UVTrim
 from . import DUV_ApplyMaterial
 from . import DUV_UVBoxmap
 from . import DUV_UVBoxwrap
+import hotspotter_core as HSC
 
 import importlib
 if 'bpy' in locals():
@@ -55,6 +56,7 @@ if 'bpy' in locals():
     importlib.reload(DUV_ApplyMaterial)
     importlib.reload(DUV_UVBoxmap)
     importlib.reload(DUV_UVBoxwrap)
+    importlib.reload(HSC)
     
 class DUVUVToolsPreferences(bpy.types.AddonPreferences):
     bl_idname = __name__

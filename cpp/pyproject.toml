@@ -5,15 +5,19 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "hotspotter-core"
 version = "0.1.0"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = []
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"
-build-dir = "build"
+build-dir = "build/{wheel_tag}"
+wheel.py-api = "cp312"
 
 [tool.scikit-build.cmake.define]
 CMAKE_EXPORT_COMPILE_COMMANDS = true
+
+[tool.cibuildwheel.macos.environment]
+MACOSX_DEPLOYMENT_TARGET = "10.14"
 
 [tool.uv]
 cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.{h,c,hpp,cpp}" }, { file = "CMakeLists.txt" }]
