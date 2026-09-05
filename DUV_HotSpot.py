@@ -4,12 +4,41 @@ from bmesh.types import BMFace
 import bpy
 import bmesh
 import random
+from mathutils import Vector
+from .profiler import Profiler
+
 from . import DUV_Utils
 # from bpy.props import EnumProperty, BoolProperty, StringProperty, FloatProperty, IntProperty
 
 import hotspotter_core as hsc
+hsc_fitter = hsc.RectFitter()
+
+def apply_matrix(m: list[float], xy: tuple[float, float]) -> tuple[float, float]:
+    return (
+        m[0]*xy[0] + m[2]*xy[1] + m[4],
+        m[1]*xy[0] + m[3]*xy[1] + m[5]
+    )
+    
+perf = Profiler(
+    'duv_init',
+    'duv_build_atlas',
+    'hsc_build_atlas',
+    'face_duv_prep',
+    'face_duv_fit_square',
+    'face_duv_fit_square_fallback',
+    'face_duv_remap_uvs',
+    'face_hsc_fit_rect',
+    'face_hsc_apply_rect',
+    'duv_finalize',
+    name='hotspot'
+)
+
+import time
+time.perf_counter()
 
 def main(context: bpy.types.Context):
+    perf.clear()
+
     #Check if an atlas object exists
     if context.scene.subrect_atlas is None:
         print("DreamUV: No valid atlas selected!")
@@ -178,17 +207,26 @@ def main(context: bpy.types.Context):
         updated_faces.clear()
         updated_faces = temp_faces.copy()
 
+    perf.marker('duv_init')
+
     bpy.ops.uv.select_all(action='SELECT')
 
     #get atlas
     atlas = DUV_Utils.read_atlas(context)
 
+    perf.marker('duv_build_atlas')
+
     use_world_orientation = context.scene.duv_useorientation
+    use_mirror_x = context.scene.duv_usemirrorx
+    use_mirror_y = context.scene.duv_usemirrory
 
     # region: MODIFIED PART: BUILD HSC ATLAS
     # ----------------------------------------------------------
 
-    hsc_flags = hsc.RectFlags_t.enable_rotation.value # | hsc.RectFlags_t.tile_x_y.value
+    hsc_flags = 0
+    if not use_world_orientation:
+        hsc_flags |= hsc.RectFlags_t.enable_rotation.value
+
     hsc_atlas: list[hsc.Rect] = [
         hsc.Rect(
                 hsc_flags,
@@ -197,19 +235,22 @@ def main(context: bpy.types.Context):
             ) for rect in atlas
     ]
 
-    def print_vec2(r: hsc.Vec2f | hsc.Vec2i) -> str:
-        return f'({r.x}, {r.y})'
+    perf.marker('hsc_build_atlas')
 
-    def print_rect(r: hsc.Rect) -> str:
-        return f'Rect({print_vec2(r.mins), print_vec2(r.maxs)})'
+    # def print_vec2(r: hsc.Vec2f | hsc.Vec2i) -> str:
+    #     return f'({r.x}, {r.y})'
 
+    # def print_rect(r: hsc.Rect) -> str:
+    #     return f'Rect({print_vec2(r.mins), print_vec2(r.maxs)})'
 
-    print("--- HCS ATLAS ---")
-    print("\n".join([print_rect(x) for x in hsc_atlas]))
-    print("--- END HCS ATLAS ---")
+    # print("--- HCS ATLAS ---")
+    # print("\n".join([print_rect(x) for x in hsc_atlas]))
+    # print("--- END HCS ATLAS ---")
 
     #NOW ITERATE!
     for island in islands:
+        perf.begin()
+
         uv_layer = bm.loops.layers.uv.verify()
 
         for face in selected_faces:
@@ -223,7 +264,7 @@ def main(context: bpy.types.Context):
         #MAKE FACE LIST
         for face in bm.faces:
             if face.select:
-                island_faces.append(face)    
+                island_faces.append(face)
 
         #get original size
         xmin2, xmax2 = island_faces[0].loops[0][uv_layer].uv.x, island_faces[0].loops[0][uv_layer].uv.x
@@ -235,14 +276,18 @@ def main(context: bpy.types.Context):
                 ymin2 = min(ymin2, vert[uv_layer].uv.y)
                 ymax2 = max(ymax2, vert[uv_layer].uv.y)
       
+        perf.marker('face_duv_prep')
+
         #try fitting selection to square
         is_rect = DUV_Utils.square_fit(context)
+        perf.marker('face_duv_fit_square')
+
         if is_rect is False:
-            #return {'FINISHED'}
-        
             bmesh.update_edit_mesh(active_object.data)
             bpy.ops.uv.unwrap(method='CONFORMAL', margin=0.001)
             uv_layer = bm.loops.layers.uv.verify()
+
+        perf.marker('face_duv_fit_square_fallback')
 
         #rotate to world angle here:
         DUV_Utils.get_orientation(context)
@@ -276,157 +321,64 @@ def main(context: bpy.types.Context):
                 loop[uv_layer].uv.y -= ymin
                 loop[uv_layer].uv.x /= edge_x
                 loop[uv_layer].uv.y /= edge_y
-
-        island_aspect = edge_x / edge_y
-        island_area: float = sum(f.calc_area() for f in island_faces if f.select)
         
-        # if is_rect is False:
-        #     #calulate ratio empty vs full
-        #     size_ratio = DUV_Utils.get_uv_ratio(context)
-        #     #prevent divide by 0:
-        #     if size_ratio == 0:
-        #         size_ratio = 1.0
-        #     island_area = island_area / size_ratio
-
-        # if island_aspect > 1:
-        #     island_aspect = round(island_aspect)
-        # else: 
-        #     if island_aspect > 0.0001: #prevent divide by 0
-        #         island_aspect = 1/(round(1/island_aspect))
-
-        #ASPECT LOWER THAN 1.0 = TALL
-        #ASPECT HIGHER THAN 1.0 = WIDE
-
-        #find closest aspect ratio in list
-
-        #2 variations depending on tall or wide
-
-        # index = 0
-        # temp_length = abs(atlas[0].pos_aspect - island_aspect)
-
-        # if use_world_orientation:
-        #     for rect in atlas:
-        #             test_length = abs(rect.aspect - island_aspect) 
-        #             if test_length < temp_length:
-        #                 temp_length = test_length
-        #                 temp_index = index
-        #             index += 1
-
-        # if not use_world_orientation:
-            
-        #     #wide:
-        #     if island_aspect >= 1.0:
-        #         for rect in atlas:
-        #             test_length = abs(rect.pos_aspect - island_aspect) 
-        #             if test_length < temp_length:
-        #                 temp_length = test_length
-        #                 temp_index = index
-        #             index += 1
-
-        #     #tall:
-        #     else:
-        #         temp_length = abs((atlas[0].pos_aspect)-(1/island_aspect))
-        #         for rect in atlas:
-        #             test_length = abs((rect.pos_aspect)-(1/island_aspect)) 
-        #             if test_length < temp_length:
-        #                 temp_length = test_length
-        #                 temp_index = index
-        #             index += 1
-
-        #NOW MAKE LIST OF ASPECTS!
-        # aspect_bucket = list()
-
-        # for r in atlas:
-        #     if r.aspect == atlas[temp_index].aspect:
-        #         aspect_bucket.append(r)
-        #     if use_world_orientation is False:
-        #         if r.aspect == 1 / atlas[temp_index].aspect:
-        #             aspect_bucket.append(r)
-
-        # #find closest size in bucket:
-        # index = 0
-
-        # temp_length = abs(aspect_bucket[0].size - island_area)
-        # temp_index = 0
-
-        # valid_rects = list()
-        # for a in aspect_bucket:
-        #     test_length = abs(a.size-island_area) 
-        #     if test_length <= temp_length:
-        #         temp_length = test_length
-        #         temp_index = index
-        #     index += 1
-        
-        # index = 0
-        # for a in aspect_bucket:
-        #     if a.size == aspect_bucket[temp_index].size:
-        #         valid_rects.append(index)
-        #     index += 1
-
-        # temp_index = random.choice(valid_rects)
-
-        #test if coords are already asigned by comparing minmaxes, then try again
+        perf.marker('face_duv_remap_uvs')
 
         edge_scale = context.scene.duvhotspotscale
         hsc_surface = hsc.Vec2f(edge_x * edge_scale, edge_y * edge_scale)
         hsc_output = hsc.RectFitResult(-1, False)
-        hsc_idx = hsc.fit_rect_to_surface(hsc_atlas, hsc_surface, hsc_output)
+        hsc_idx = hsc_fitter.fit_rect_to_surface(hsc_atlas, hsc_surface, hsc_output)
 
-        print('idx:', hsc_idx, 'score:', hsc_output.score, 'rotated:', hsc_output.rotated, 'oidx:', hsc_output.rect_idx, 'tiling:', print_vec2(hsc_output.tiling))
+        perf.marker('face_hsc_fit_rect')
 
-        target_rect = hsc_atlas[hsc_idx]
-        print(target_rect.get_width(), target_rect.get_height())
-        target_rect.maxs = hsc.Vec2f(
-            target_rect.maxs.x + (hsc_output.tiling.x - 1) * target_rect.get_width(),
-            target_rect.maxs.y + (hsc_output.tiling.y - 1) * target_rect.get_height()
-        )
-        print(target_rect.get_width(), target_rect.get_height())
-        xmin, xmax = target_rect.mins.x, target_rect.maxs.x
-        ymin, ymax = target_rect.mins.y, target_rect.maxs.y
-
-        #flip if aspect is inverted
-
-        #check if uv needs to be inset
+        uv_inset = 0.0
         if context.scene.duv_hotspotuseinset is True:
-            pixel_inset = context.scene.hotspotinsetpixels / context.scene.hotspotinsettexsize
-            xmin += pixel_inset
-            xmax -= pixel_inset
-            ymin += pixel_inset
-            ymax -= pixel_inset
+            uv_inset = context.scene.hotspotinsetpixels / context.scene.hotspotinsettexsize
+
+
+        target_matrix: list[float]
+        if hsc_idx == -1:
+            target_matrix = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+        else:
+            target_matrix = hsc_fitter.get_final_transform(
+                hsc.Vec2f(1, 1),
+                hsc_atlas[hsc_idx],
+                hsc_output.tiling,
+                uv_inset,
+                random.choice([-1, 1]) if hsc_output.rotated else 0
+            )
 
         #apply the new UV
         for face in island_faces:
             for loop in face.loops:
-                loop[uv_layer].uv.x *= xmax-xmin
-                loop[uv_layer].uv.y *= ymax-ymin
-                loop[uv_layer].uv.x += xmin
-                loop[uv_layer].uv.y += ymin
+                loop_uv: Vector = loop[uv_layer].uv
+                loop_uv.x, loop_uv.y = apply_matrix(target_matrix, (loop_uv.x, loop_uv.y))
 
-        use_world_orientation = context.scene.duv_useorientation
-        use_mirrorx = context.scene.duv_usemirrorx
-        use_mirrory = context.scene.duv_usemirrory
+        perf.marker('face_hsc_apply_rect')
 
         #MIRRORING:
 
-        if hsc_output.rotated:
-            for _ in range(3 if random.random() > 0.5 else 1):
-                bpy.ops.view3d.dreamuv_uvcycle()
+        # if hsc_output.rotated:
+        #     for _ in range(3 if random.random() > 0.5 else 1):
+        #         bpy.ops.view3d.dreamuv_uvcycle()
         
         #and also do randomized mirroring:
-        if use_mirrorx is True:
-            randomMirrorX = random.randint(0, 1)
-            if randomMirrorX == 1:
-                bpy.ops.view3d.dreamuv_uvmirror(direction = "x")
+        # if use_mirror_x is True:
+        #     randomMirrorX = random.randint(0, 1)
+        #     if randomMirrorX == 1:
+        #         bpy.ops.view3d.dreamuv_uvmirror(direction = "x")
 
-        if use_mirrory is True:
-            randomMirrorY = random.randint(0, 1)
-            if randomMirrorY == 1:
-                bpy.ops.view3d.dreamuv_uvmirror(direction = "y")
+        # if use_mirror_y is True:
+        #     randomMirrorY = random.randint(0, 1)
+        #     if randomMirrorY == 1:
+        #         bpy.ops.view3d.dreamuv_uvmirror(direction = "y")
 
         #apply material from index
         if context.scene.duv_hotspotmaterial is not None:
             for face in island_faces:   
                 face.material_index = mat_index
+
+    perf.begin()
 
     for face in selected_faces:
         face.select = True
@@ -485,6 +437,11 @@ def main(context: bpy.types.Context):
     
     if is_object_mode is False:
         bpy.ops.object.editmode_toggle() 
+
+    perf.marker('duv_finalize')
+
+    print(perf)
+    print(DUV_Utils.square_fit_perf)
     
     #temp - do both uvs!
     #if context.scene.duv_uv2copy == True:

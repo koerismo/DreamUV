@@ -10,7 +10,7 @@ find_package(Python 3.13
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ext/nanobind)
 include_directories(_core ext/hotspotter/hammer/src)
 
-nanobind_add_module(_core STABLE_ABI NB_STATIC LTO src/${SKBUILD_PROJECT_NAME}/_core.cpp)
+nanobind_add_module(_core STABLE_ABI NB_STATIC LTO NOMINSIZE src/${SKBUILD_PROJECT_NAME}/_core.cpp)
 nanobind_add_stub(
   _core_stub
   MODULE _core

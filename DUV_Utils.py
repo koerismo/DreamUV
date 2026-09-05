@@ -5,6 +5,8 @@ import math
 import random
 from mathutils import Vector
 
+from .profiler import Profiler
+
 
 def get_face_pixel_step(context: bpy.types.Context, face: bpy.types.MeshPolygon):
     """
@@ -382,9 +384,6 @@ def read_atlas(context: bpy.types.Context):
             ymax = max(ymax, vert[uv_layer].uv.y)
 
         new_subrect = SubRect()
-        edge1 = xmax - xmin
-        edge2 = ymax - ymin
-        
         rect: list[Vector] = list()
         
         for loop in face.loops:
@@ -394,34 +393,9 @@ def read_atlas(context: bpy.types.Context):
             rect.append(uvcoord)
         
         new_subrect.uvcoord = rect
-        
-        #calculate aspect ratio
-        if edge1 > 0 and edge2 > 0:
-
-            aspect = edge1/edge2
-            if aspect > 1:
-                aspect = round(aspect)
-            else:
-                aspect = 1/(round(1/aspect))
-                #aspect = 1/aspect
-            posaspect = aspect
-            if posaspect < 1.0:
-                posaspect = 1/posaspect
-            #calculate size
-            size = face.calc_area()
-
-            #adjust scale
-            size /= context.scene.duvhotspotscale*context.scene.duvhotspotscale
-
-            size = float('%.2g' % size) #round to 2 significant digits
-
+        new_subrect.bounds = Vector((xmin, ymin, xmax, ymax))
+        atlas.append(new_subrect)   
     
-            new_subrect.aspect = aspect
-            new_subrect.pos_aspect = posaspect
-            new_subrect.size = size
-            new_subrect.bounds = Vector((xmin, ymin, xmax, ymax))
-            atlas.append(new_subrect)   
-
     return atlas
 
 
@@ -507,10 +481,17 @@ def donut_uv_fixer(context):
     return True
 
 
+square_fit_perf = Profiler(
+    'square_fit_init',
+    'square_fit_donut',
+    'square_fit_unwrap',
+    'square_fit_finalize',
+    name="bweh"
+)
 
 def square_fit(context: bpy.types.Context):
+    square_fit_perf.begin()
 
-       
     #return {'FINISHED'}
 
     obj = bpy.context.view_layer.objects.active
@@ -533,6 +514,8 @@ def square_fit(context: bpy.types.Context):
     for face in faces: 
         if len(face.loops) != 4 :
             quadmethod = False
+    
+    square_fit_perf.marker('square_fit_init')
     
     #FIRST FIX DONUT SHAPES:
     noDonut = True
@@ -636,11 +619,15 @@ def square_fit(context: bpy.types.Context):
         for f in faces:
             f.select = True 
 
+    square_fit_perf.marker('square_fit_donut')
+
     #SLOW HERE, find faster way to test if selection is ring shaped
 
     #Unwrap and get the edge verts
-    bpy.ops.uv.unwrap(method='CONFORMAL', margin=0.001)
+    bpy.ops.uv.unwrap(method='CONFORMAL', margin=0.001, use_original_bounds=True)
     bpy.ops.mesh.region_to_loop()
+
+    square_fit_perf.marker('square_fit_unwrap')
 
     edge_list = list()
     for e in bm.edges:
@@ -808,7 +795,7 @@ def square_fit(context: bpy.types.Context):
 
     
     if quadmethod: 
-    #MAP FIRST QUAD
+        #MAP FIRST QUAD
         edge1 = (faces[0].loops[0].vert.co.xyz - faces[0].loops[1].vert.co.xyz).length
         edge2 = (faces[0].loops[1].vert.co.xyz - faces[0].loops[2].vert.co.xyz).length
 
@@ -955,14 +942,14 @@ def square_fit(context: bpy.types.Context):
         #bpy.ops.uv.minimize_stretch(iterations=50)   
         #return true if rect fit was succesful
         
-        return not distorted     
+        return not distorted
+
+
+    square_fit_perf.marker('square_fit_finalize')
 
 
 
 class SubRect:
-    aspect: int = int()
-    pos_aspect: int = int()
-    size: float = float()
     uvcoord: list[Vector] = list()
     bounds: Vector = Vector((0, 0, 0, 0))
 
