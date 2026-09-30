@@ -33,7 +33,7 @@ NB_MODULE(_core, m) {
                 nb::arg("inset"),
                 nb::arg("out_bounds")
             )
-        .def("get_final_transform", [](RectFitter& r, Vec2f& tex_size, Rect& rect, Vec2f& tiling, double inset, int rotation) {
+        .def("get_final_transform", [](RectFitter& r, Vec2f& tex_size, Rect& rect, Vec2i& tiling, double inset, int rotation) {
                     std::array<double, 6> matrix_array;
                     auto matrix_ptr = reinterpret_cast<Mat3x2*>(matrix_array.data());
                     r.GetFinalTransform(tex_size, rect, tiling, inset, rotation, *matrix_ptr);
@@ -145,7 +145,7 @@ NB_MODULE(_core, m) {
                 )
        .def_prop_rw("tiling",
                     [](RectFitResult &t) -> auto& { return t.tiling; },
-                    [](RectFitResult &t, Vec2f v) { t.tiling = v; }
+                    [](RectFitResult &t, Vec2i v) { t.tiling = v; }
                 )
        .def_prop_rw("rotated",
                     [](RectFitResult &t) { return t.rotated; },

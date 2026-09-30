@@ -1,10 +1,10 @@
 from time import perf_counter, sleep
 
-def print_time_s(t: float) -> str:
-    if t < 1.0: return str(round(t * 1000, 2)) + 'ms'
-    if t < 60.0: return str(round(t, 2)) + 's'
-    if t < 3600.0: return str(round(t / 60, 2)) + 'm'
-    return str(round(t / 60 / 60, 2)) + 'h'
+def print_time_s(s: float) -> str:
+    if s < 1.0: return str(round(s * 1000, 2)) + 'ms'
+    if s < 60.0: return str(round(s, 2)) + 's'
+    if s < 3600.0: return str(round(s / 60, 2)) + 'm'
+    return str(round(s / 3600, 2)) + 'h'
 
 def print_percent(t: float) -> str:
     return str(round(t, 2) * 100.0) + '%'
